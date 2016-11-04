@@ -1,0 +1,149 @@
+#!/bin/bash
+
+# check_snmp_uptime
+# Description : Check the uptime of a host
+# Version : 1.0
+# Author : Yoann LAMY
+# Licence : GPLv2
+
+# Commands
+CMD_BASENAME="/bin/basename"
+CMD_SNMPGET="/usr/bin/snmpget"
+CMD_AWK="/bin/awk"
+CMD_BC="/usr/bin/bc"
+CMD_DATE="/usr/bin/date"
+CMD_SED="/bin/sed"
+
+# Script name
+SCRIPTNAME=`$CMD_BASENAME $0`
+
+# Version
+VERSION="1.0"
+
+# Plugin return codes
+STATE_OK=0
+STATE_WARNING=1
+STATE_CRITICAL=2
+STATE_UNKNOWN=3
+
+# 'hrSystemUptime', HOST-RESOURCES-MIB
+OID_UPTIME=".1.3.6.1.2.1.25.1.1.0"
+
+# 'sysUpTimeInstance', DISMAN-EVENT-MIB
+OID_UPTIME_INSTANCE=".1.3.6.1.2.1.1.3.0"
+
+# Default variables
+DESCRIPTION="Unknown"
+STATE=$STATE_UNKNOWN
+
+# Default options
+COMMUNITY="public"
+HOSTNAME="127.0.0.1"
+WARNING=0
+CRITICAL=0
+
+# Option processing
+print_usage() {
+  echo "Usage: ./check_snmp_uptime -H 127.0.0.1 -C public -w 50 -c 100"
+  echo "  $SCRIPTNAME -H ADDRESS"
+  echo "  $SCRIPTNAME -C STRING"
+  echo "  $SCRIPTNAME -w INTEGER"
+  echo "  $SCRIPTNAME -c INTEGER"
+  echo "  $SCRIPTNAME -h"
+  echo "  $SCRIPTNAME -V"
+}
+
+print_version() {
+  echo $SCRIPTNAME version $VERSION
+  echo ""
+  echo "This nagios plugins comes with ABSOLUTELY NO WARRANTY."
+  echo "You may redistribute copies of the plugins under the terms of the GNU General Public License v2."
+}
+
+print_help() {
+  print_version
+  echo ""
+  print_usage
+  echo ""
+  echo "Check the uptime of a host"
+  echo ""
+  echo "-H ADDRESS"
+  echo "   Name or IP address of host (default: 127.0.0.1)"
+  echo "-C STRING"
+  echo "   Community name for the host's SNMP agent (default: public)"
+  echo "-w INTEGER"
+  echo "   Warning level for the the number of days (default: 0)"
+  echo "-c INTEGER"
+  echo "   Critical level for the the number of days (default: 0)"
+  echo "-h"
+  echo "   Print this help screen"
+  echo "-V"
+  echo "   Print version and license information"
+  echo ""
+  echo ""
+  echo "This plugin uses the 'snmpget' command included with the NET-SNMP package."
+  echo "This plugin support performance data output."
+}
+
+while getopts H:C:w:c:hV OPT
+do
+  case $OPT in
+    H) HOSTNAME="$OPTARG" ;;
+    C) COMMUNITY="$OPTARG" ;;
+    w) WARNING=$OPTARG ;;
+    c) CRITICAL=$OPTARG ;;
+    h)
+      print_help
+      exit $STATE_UNKNOWN
+      ;;
+    V)
+      print_version
+      exit $STATE_UNKNOWN
+      ;;
+   esac
+done
+
+# Plugin processing
+TIMETICKS=`$CMD_SNMPGET -t 2 -r 2 -v 1 -c $COMMUNITY -Ov $HOSTNAME "$OID_UPTIME" | $CMD_AWK '{print $2}' | $CMD_SED 's/(\|)//g'`
+
+if [ -z "$TIMETICKS" ]; then
+  TIMETICKS=`$CMD_SNMPGET -t 2 -r 2 -v 1 -c $COMMUNITY -Ov $HOSTNAME "$OID_UPTIME_INSTANCE" | $CMD_AWK '{print $2}' | $CMD_SED 's/(\|)//g'`
+fi
+
+if [ -n "$TIMETICKS" ]; then
+  if [ $TIMETICKS -ge 8640000 ]; then
+    DAYS=`echo "$TIMETICKS / 8640000" | $CMD_BC`
+  else
+    DAYS=0
+    HOURS=`echo "$TIMETICKS / 360000" | $CMD_BC`
+    MINUTES=`echo "( $TIMETICKS - ( $HOURS * 360000 ) ) / 6000" | $CMD_BC`
+  fi
+
+  if [ $WARNING != 0 ] || [ $CRITICAL != 0 ]; then
+    if [ $DAYS -gt $CRITICAL ] && [ $CRITICAL != 0 ]; then
+      STATE=$STATE_CRITICAL
+    elif [ $DAYS -gt $WARNING ] && [ $WARNING != 0 ]; then
+      STATE=$STATE_WARNING
+    else
+      STATE=$STATE_OK
+    fi
+  else
+    STATE=$STATE_OK
+  fi
+
+  DESCRIPTION="The uptime is"
+  if [ $DAYS != 0 ]; then
+    LASTBOOT=`$CMD_DATE +%d/%m/%Y -d "-${DAYS} day"`
+    DESCRIPTION="$DESCRIPTION $DAYS days. The last launch date is $LASTBOOT | uptime=$DAYS;$WARNING;$CRITICAL;0"
+  else
+    if [ $HOURS != 0 ]; then
+      DESCRIPTION="$DESCRIPTION $HOURS hours and $MINUTES minutes"
+        else
+      DESCRIPTION="$DESCRIPTION $MINUTES minutes"
+        fi
+        DESCRIPTION="$DESCRIPTION | uptime=0;$WARNING;$CRITICAL;0"
+  fi
+fi
+
+echo $DESCRIPTION
+exit $STATE
