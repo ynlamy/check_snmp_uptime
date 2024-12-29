@@ -2,23 +2,23 @@
 
 # check_snmp_uptime
 # Description : Check the uptime of a host
-# Version : 1.0
+# Version : 1.1
 # Author : Yoann LAMY
 # Licence : GPLv2
 
 # Commands
-CMD_BASENAME="/bin/basename"
+CMD_BASENAME="/usr/bin/basename"
 CMD_SNMPGET="/usr/bin/snmpget"
-CMD_AWK="/bin/awk"
+CMD_AWK="/usr/bin/awk"
 CMD_BC="/usr/bin/bc"
 CMD_DATE="/usr/bin/date"
-CMD_SED="/bin/sed"
+CMD_SED="/usr/bin/sed"
 
 # Script name
 SCRIPTNAME=`$CMD_BASENAME $0`
 
 # Version
-VERSION="1.0"
+VERSION="1.1"
 
 # Plugin return codes
 STATE_OK=0
